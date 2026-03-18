@@ -6,7 +6,7 @@ import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-st.set_page_config(page_title="IOED Gummel Analyzer", layout="wide", page_icon="📈")
+st.set_page_config(page_title="IOED Sim Gummel Analyzer", layout="wide", page_icon="📈")
 
 
 def check_password():
@@ -37,19 +37,12 @@ if not check_password(): st.stop()
 if "uploader_key" not in st.session_state:
     st.session_state["uploader_key"] = 0
 
-st.title("📈 IOED Gummel Plot Analyzer")
+st.title("📈 IOED Sim Gummel Plot Analyzer")
 st.caption("""
 **Core Features:** Real-time Ideality Factor (n) Calculation & Target Calibration  
 
 **📝 Changelog (版本紀錄):**
-* **v1.8:** Adjusted sidebar layout for Y-axis scaling (Current Min/Max stacked vertically for better scientific notation visibility). / 修正電流 Y 軸輸入框寬度。
-* **v1.7:** Added Custom Y-Axis Scaling (Auto/Manual) for both Current and Beta.
-* **v1.6:** Fixed Beta explosion at low Vbase by introducing independent `Ib` noise floor.
-* **v1.5:** Added Simulated `Ic` Noise Floor Injection & Auto Beta Recalculation.
-* **v1.4:** Standardized Line Styling (Color=Source, Dash=Variable), Unblocked Horizontal Legends.
-* **v1.3:** Added Peak Beta & Turn-on Voltage Tracking to Error Table.
-* **v1.2:** Scientific Notation Y-axis, Error Calculation Table.
-* **v1.1:** UIUC Golden Target Overlay without Interpolation Distortion.
+* **v1.9:** Implemented Dynamic Data Slicing. Auto-scale Y-axis now strictly binds to the selected X-axis range, eliminating out-of-bound numerical artifacts (e.g., Beta exploding to 5000+).
 """)
 
 UIUC_CSV_STRING = """gummel_Ib,,gummel_Ic,,gummel_beta,
@@ -249,11 +242,9 @@ with st.sidebar:
     st.divider()
     auto_y = st.checkbox("Auto Scale Y-Axes / Y軸自動縮放", value=True)
 
-    # 改成上下排列，讓科學記號有完整寬度顯示
     cur_ymin = st.number_input("Current Min (A)", value=1e-12, format="%.1e", disabled=auto_y)
-    cur_ymax = st.number_input("Current Max (A)", value=1e-2, format="%.1e", disabled=auto_y)
+    cur_ymax = st.number_input("Current Max (A)", value=1, format="%.1e", disabled=auto_y)
 
-    # Beta 維持並排
     col_by1, col_by2 = st.columns(2)
     beta_ymin = col_by1.number_input("Beta Min", value=0.0, step=1.0, disabled=auto_y)
     beta_ymax = col_by2.number_input("Beta Max", value=25.0, step=1.0, disabled=auto_y)
@@ -379,18 +370,22 @@ with tab1:
         st.info("💡 等待上傳模擬資料中...下方為內建的 UIUC 基準曲線。")
 
     f_cur = go.Figure()
-    f_cur.add_trace(go.Scatter(x=uiuc_ref["V_Ic"], y=uiuc_ref["Ic"], name="UIUC Ic",
+
+    m_u_ic = (uiuc_ref["V_Ic"] >= x_min) & (uiuc_ref["V_Ic"] <= x_max)
+    m_u_ib = (uiuc_ref["V_Ib"] >= x_min) & (uiuc_ref["V_Ib"] <= x_max)
+    f_cur.add_trace(go.Scatter(x=uiuc_ref["V_Ic"][m_u_ic], y=uiuc_ref["Ic"][m_u_ic], name="UIUC Ic",
                                line=dict(color=UIUC_COLOR, width=3, dash=LINE_IC)))
-    f_cur.add_trace(go.Scatter(x=uiuc_ref["V_Ib"], y=uiuc_ref["Ib"], name="UIUC Ib",
+    f_cur.add_trace(go.Scatter(x=uiuc_ref["V_Ib"][m_u_ib], y=uiuc_ref["Ib"][m_u_ib], name="UIUC Ib",
                                line=dict(color=UIUC_COLOR, width=3, dash=LINE_IB)))
 
     if all_data:
         for i, k in enumerate(selected_files):
             d = all_data[k]
             c = SIM_COLORS[i % len(SIM_COLORS)]
-            f_cur.add_trace(go.Scatter(x=d["Vbase"], y=d["Ic_abs"], name=f"Ic - {Path(k).stem}",
+            m_sim = (d["Vbase"] >= x_min) & (d["Vbase"] <= x_max)
+            f_cur.add_trace(go.Scatter(x=d["Vbase"][m_sim], y=d["Ic_abs"][m_sim], name=f"Ic - {Path(k).stem}",
                                        line=dict(color=c, width=2, dash=LINE_IC)))
-            f_cur.add_trace(go.Scatter(x=d["Vbase"], y=d["Ib_abs"], name=f"Ib - {Path(k).stem}",
+            f_cur.add_trace(go.Scatter(x=d["Vbase"][m_sim], y=d["Ib_abs"][m_sim], name=f"Ib - {Path(k).stem}",
                                        line=dict(color=c, width=2, dash=LINE_IB)))
 
     update_axes(f_cur, "Current (A)", y_scale == "Log")
@@ -400,14 +395,16 @@ with tab1:
     st.divider()
 
     f_beta = go.Figure()
-    f_beta.add_trace(go.Scatter(x=uiuc_ref["V_Beta"], y=uiuc_ref["Beta"], name="UIUC Beta",
+    m_u_beta = (uiuc_ref["V_Beta"] >= x_min) & (uiuc_ref["V_Beta"] <= x_max)
+    f_beta.add_trace(go.Scatter(x=uiuc_ref["V_Beta"][m_u_beta], y=uiuc_ref["Beta"][m_u_beta], name="UIUC Beta",
                                 line=dict(color=UIUC_COLOR, width=3, dash=LINE_IC)))
 
     if all_data:
         for i, k in enumerate(selected_files):
             d = all_data[k]
             c = SIM_COLORS[i % len(SIM_COLORS)]
-            f_beta.add_trace(go.Scatter(x=d["Vbase"], y=d["Beta"], name=f"Beta - {Path(k).stem}",
+            m_sim = (d["Vbase"] >= x_min) & (d["Vbase"] <= x_max)
+            f_beta.add_trace(go.Scatter(x=d["Vbase"][m_sim], y=d["Beta"][m_sim], name=f"Beta - {Path(k).stem}",
                                         line=dict(color=c, width=2, dash=LINE_IC)))
 
     update_axes(f_beta, "Beta (Linear)", False)
@@ -428,19 +425,25 @@ with tab2:
                 d = all_data[sel_sim]
 
                 f_dual = make_subplots(specs=[[{"secondary_y": True}]])
-                f_dual.add_trace(go.Scatter(x=uiuc_ref["V_Ic"], y=uiuc_ref["Ic"], name="UIUC Ic",
+                m_u_ic = (uiuc_ref["V_Ic"] >= x_min) & (uiuc_ref["V_Ic"] <= x_max)
+                m_u_ib = (uiuc_ref["V_Ib"] >= x_min) & (uiuc_ref["V_Ib"] <= x_max)
+                m_u_beta = (uiuc_ref["V_Beta"] >= x_min) & (uiuc_ref["V_Beta"] <= x_max)
+
+                f_dual.add_trace(go.Scatter(x=uiuc_ref["V_Ic"][m_u_ic], y=uiuc_ref["Ic"][m_u_ic], name="UIUC Ic",
                                             line=dict(color=UIUC_COLOR, width=3, dash=LINE_IC)), secondary_y=False)
-                f_dual.add_trace(go.Scatter(x=uiuc_ref["V_Ib"], y=uiuc_ref["Ib"], name="UIUC Ib",
+                f_dual.add_trace(go.Scatter(x=uiuc_ref["V_Ib"][m_u_ib], y=uiuc_ref["Ib"][m_u_ib], name="UIUC Ib",
                                             line=dict(color=UIUC_COLOR, width=3, dash=LINE_IB)), secondary_y=False)
-                f_dual.add_trace(go.Scatter(x=uiuc_ref["V_Beta"], y=uiuc_ref["Beta"], name="UIUC Beta",
-                                            line=dict(color=UIUC_COLOR, width=3, dash=LINE_BETA)), secondary_y=True)
+                f_dual.add_trace(
+                    go.Scatter(x=uiuc_ref["V_Beta"][m_u_beta], y=uiuc_ref["Beta"][m_u_beta], name="UIUC Beta",
+                               line=dict(color=UIUC_COLOR, width=3, dash=LINE_BETA)), secondary_y=True)
 
                 sim_c = SIM_COLORS[list(all_data.keys()).index(sel_sim) % len(SIM_COLORS)]
-                f_dual.add_trace(go.Scatter(x=d["Vbase"], y=d["Ic_abs"], name=f"Sim Ic",
+                m_sim = (d["Vbase"] >= x_min) & (d["Vbase"] <= x_max)
+                f_dual.add_trace(go.Scatter(x=d["Vbase"][m_sim], y=d["Ic_abs"][m_sim], name=f"Sim Ic",
                                             line=dict(color=sim_c, width=2.5, dash=LINE_IC)), secondary_y=False)
-                f_dual.add_trace(go.Scatter(x=d["Vbase"], y=d["Ib_abs"], name=f"Sim Ib",
+                f_dual.add_trace(go.Scatter(x=d["Vbase"][m_sim], y=d["Ib_abs"][m_sim], name=f"Sim Ib",
                                             line=dict(color=sim_c, width=2.5, dash=LINE_IB)), secondary_y=False)
-                f_dual.add_trace(go.Scatter(x=d["Vbase"], y=d["Beta"], name=f"Sim Beta",
+                f_dual.add_trace(go.Scatter(x=d["Vbase"][m_sim], y=d["Beta"][m_sim], name=f"Sim Beta",
                                             line=dict(color=sim_c, width=2.5, dash=LINE_BETA)), secondary_y=True)
 
                 y1_dict = dict(title="Current (A)", type="log" if y_scale == "Log" else "linear",
