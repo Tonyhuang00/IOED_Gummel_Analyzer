@@ -250,8 +250,8 @@ with st.sidebar:
     beta_ymax = col_by2.number_input("Beta Max", value=25.0, step=1.0, disabled=auto_y)
 
     st.markdown("#### 🔬 Physics Params / 物理參數")
-    n_min = st.number_input("n Calc I_min (A) / 理想因子下限", value=1e-9, format="%.1e")
-    n_max = st.number_input("n Calc I_max (A) / 理想因子上限", value=1e-6, format="%.1e")
+    n_min = st.number_input("n Calc I_min (A) / 理想因子下限", value=1e-8, format="%.1e")
+    n_max = st.number_input("n Calc I_max (A) / 理想因子上限", value=2e-5, format="%.1e")
     Vt = st.number_input("Thermal Voltage Vt (V)", value=0.02585, format="%.5f")
 
     st.markdown("#### 💾 Export / 匯出設定")
